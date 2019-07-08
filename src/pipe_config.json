@@ -1,0 +1,9 @@
+{
+"Test0":
+    { 
+      "user-channel":"123",
+      "peer-channel":"850",
+      "rtsp_ip_address":"localhost",
+      "rtsp_port":"5001"
+    }
+}
