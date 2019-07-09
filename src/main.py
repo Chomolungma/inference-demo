@@ -8,7 +8,7 @@ import json
 gi.require_version('Gst', '1.0')
 gi.require_version('GObject', '2.0')
 from gi.repository import GObject, Gst, GLib
-from gst import pygstd
+from gst import gstc
 
 webrtc_base_pipeline = " rrwebrtcbin start-call=true signaler=GstOwrSignaler signaler::server_url=https://webrtc.ridgerun.com:8443 "
 rstp_source_pipeline = " rtspsrc debug=true async-handling=true location=rtsp://"
@@ -28,18 +28,18 @@ def logger_setup():
     handler.setFormatter(formatter)
     root.addHandler(handler)
 
-def play_pipeline(gstd_client, pipeline):
+def create_pipeline(gstd_client, name, pipeline):
     global pipeline_counter
-    [ret, description] = gstd_client.pipeline_create ("p" + str(pipeline_counter), pipeline)
+    ret = gstd_client.pipeline_create (name, pipeline)
     if (ret!=0):
-        print ("Error creating the pipeline: "+ str(ret) + " " + description)
-        return
-    [ret, description] = gstd_client.pipeline_play ("p" +  str(pipeline_counter))
-    if (ret!=0):
-        print ("Error playing the pipeline: "+ str(ret) + " " + description)
+        print ("Error creating the pipeline: "+ str(ret))
         return
 
-    pipeline_counter = pipeline_counter + 1
+def play_pipeline(gstd_client, name):
+    ret = gstd_client.pipeline_play (name)
+    if (ret!=0):
+        print ("Error playing the pipeline: "+ str(ret))
+        return
 
 def build_test_0(gstd_client, test_name, default_data):
     session_id = default_data[test_name]["session_id"]
@@ -65,10 +65,11 @@ def build_test_0(gstd_client, test_name, default_data):
     logging.info(" Test name: " + test_name)
     logging.info(" Description: RTSP + GstInterpipe + GstWebRTC on GStreamer Daemon")
     logging.info(" Pipeline: " + full_pipe)
-    play_pipeline(gstd_client, full_pipe)
+    create_pipeline(gstd_client, "p0", full_pipe)
+    play_pipeline(gstd_client, "p0")
 
 def main (args=None):
-    gstd_client = pygstd.GSTD()
+    gstd_client = gstc.client(loglevel='DEBUG')
 
     # Load the JSON default parameters as a dictionary
     with open('./pipe_config.json') as json_file:
