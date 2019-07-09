@@ -18,8 +18,6 @@ interpipesink_pipeline = " interpipesink enable-last-sample=false forward-eos=tr
 interpipesrc_pipeline = " interpipesrc name=src format=3 listen-to="
 video_encode_pipeline = " queue max-size-buffers=1 leaky=downstream ! omxvp8enc ! rtpvp8pay"
 
-pipeline_counter = 0
-
 def logger_setup():
     root = logging.getLogger()
     root.setLevel(logging.DEBUG)
@@ -46,6 +44,13 @@ def set_element_prop(gstd_client, name, element, prop, value):
     ret = gstd_client.element_set(name, element, prop, value)
     if (ret!=0):
         print ("Error setting element property: "+ str(ret))
+        return
+
+def stop_pipeline(gstd_client, name):
+    ret = gstd_client.pipeline_stop (name)
+    if (ret!=0):
+        print ("Error stopping the pipeline: "+ str(ret))
+        return
 
 def build_test_0(gstd_client, test_name, default_data):
     session_id = default_data[test_name]["session_id"]
@@ -77,13 +82,6 @@ def build_test_0(gstd_client, test_name, default_data):
     create_pipeline(gstd_client, "p0", full_pipe)
     play_pipeline(gstd_client, "p0")
 
-    time.sleep(10)
-    set_element_prop(gstd_client, "p0", "src", "listen-to", "Test0_decodesink")
-
-    time.sleep(10)
-    set_element_prop(gstd_client, "p0", "src", "listen-to", "Test0_camera")
-
-
 def main (args=None):
     gstd_client = gstc.client(loglevel='DEBUG')
 
@@ -95,13 +93,24 @@ def main (args=None):
     logger_setup()
 
     logging.info("This is a demo application...")
-    loop = GObject.MainLoop()
     build_test_0(gstd_client, "Test0", default_params)
 
-    try:
-        loop.run()
-    except GLib.Error:
-        pass
+    time.sleep(1)
+    while True:
+        choice = input("    ** Menu **\n 1) Camera source\n 2) RTSP source\n 3) Exit\n > ")
+        choice = choice.lower() #Convert input to "lowercase"
+
+        if choice == '1':
+            set_element_prop(gstd_client, "p0", "src", "listen-to", "Test0_camera")
+            print("--> Camera source selected\n")
+        if choice == '2':
+            set_element_prop(gstd_client, "p0", "src", "listen-to", "Test0_decodesink")
+            print("--> RTSP source selected\n")
+        if choice == '3':
+            print("--> Exit\n")
+            break
+
+    stop_pipeline(gstd_client, "p0")
 
 if __name__ == "__main__":
     main(None)
