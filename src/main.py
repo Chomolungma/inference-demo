@@ -12,9 +12,10 @@ from gst import gstc
 
 webrtc_base_pipeline = " rrwebrtcbin start-call=true signaler=GstOwrSignaler signaler::server_url=https://webrtc.ridgerun.com:8443 "
 rstp_source_pipeline = " rtspsrc debug=true async-handling=true location=rtsp://"
+camera_source_pipeline = " nvarguscamerasrc sensor-id=0 "
 video_decode_pipeline = " rtpvp8depay ! omxvp8dec ! nvvidconv ! capsfilter caps=video/x-raw(memory:NVMM) ! nvvidconv "
 interpipesink_pipeline = " interpipesink enable-last-sample=false forward-eos=true forward-events=true async=false name="
-interpipesrc_pipeline = " interpipesrc format=3 listen-to="
+interpipesrc_pipeline = " interpipesrc name=src format=3 listen-to="
 video_encode_pipeline = " queue max-size-buffers=1 leaky=downstream ! omxvp8enc ! rtpvp8pay"
 
 pipeline_counter = 0
@@ -41,6 +42,11 @@ def play_pipeline(gstd_client, name):
         print ("Error playing the pipeline: "+ str(ret))
         return
 
+def set_element_prop(gstd_client, name, element, prop, value):
+    ret = gstd_client.element_set(name, element, prop, value)
+    if (ret!=0):
+        print ("Error setting element property: "+ str(ret))
+
 def build_test_0(gstd_client, test_name, default_data):
     session_id = default_data[test_name]["session_id"]
     rtsp_ip_address = default_data[test_name]["rtsp_ip_address"]
@@ -53,20 +59,30 @@ def build_test_0(gstd_client, test_name, default_data):
 
     rtsp = rstp_source_pipeline + rtsp_ip_address + ":" + rtsp_port + "/test"
 
-    interpipesink0_name = test_name + "_decodesink"
+    interpipesink0_name = test_name + "_camera"
+    interpipesink1_name = test_name + "_decodesink"
 
-    video_receive = video_decode_pipeline + " ! "
-    video_receive += interpipesink_pipeline + interpipesink0_name
+    video_receive0 = interpipesink_pipeline + interpipesink0_name
+
+    video_receive1 = video_decode_pipeline + " ! "
+    video_receive1 += interpipesink_pipeline + interpipesink1_name
 
     video_send = interpipesrc_pipeline + interpipesink0_name
     video_send += " ! " + video_encode_pipeline
 
-    full_pipe = webrtc + "  " + rtsp + " ! " + video_receive + video_send + " ! " + webrtc_name
+    full_pipe = webrtc + "  " + camera_source_pipeline + " ! " + video_receive0 +  rtsp + " ! " + video_receive1 + video_send + " ! " + webrtc_name
     logging.info(" Test name: " + test_name)
     logging.info(" Description: RTSP + GstInterpipe + GstWebRTC on GStreamer Daemon")
     logging.info(" Pipeline: " + full_pipe)
     create_pipeline(gstd_client, "p0", full_pipe)
     play_pipeline(gstd_client, "p0")
+
+    time.sleep(10)
+    set_element_prop(gstd_client, "p0", "src", "listen-to", "Test0_decodesink")
+
+    time.sleep(10)
+    set_element_prop(gstd_client, "p0", "src", "listen-to", "Test0_camera")
+
 
 def main (args=None):
     gstd_client = gstc.client(loglevel='DEBUG')
