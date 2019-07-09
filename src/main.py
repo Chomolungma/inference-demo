@@ -10,7 +10,7 @@ gi.require_version('GObject', '2.0')
 from gi.repository import GObject, Gst, GLib
 from gst import pygstd
 
-webrtc_base_pipeline = " rrwebrtcbin rtcp-mux=true start-call=true "
+webrtc_base_pipeline = " rrwebrtcbin start-call=true signaler=GstOwrSignaler signaler::server_url=https://webrtc.ridgerun.com:8443 "
 rstp_source_pipeline = " rtspsrc debug=true async-handling=true location=rtsp://"
 video_decode_pipeline = " rtpvp8depay ! omxvp8dec ! nvvidconv ! capsfilter caps=video/x-raw(memory:NVMM) ! nvvidconv "
 interpipesink_pipeline = " interpipesink enable-last-sample=false forward-eos=true forward-events=true async=false name="
@@ -42,15 +42,13 @@ def play_pipeline(gstd_client, pipeline):
     pipeline_counter = pipeline_counter + 1
 
 def build_test_0(gstd_client, test_name, default_data):
-    user_channel = default_data[test_name]["user-channel"]
-    peer_channel = default_data[test_name]["peer-channel"]
+    session_id = default_data[test_name]["session_id"]
     rtsp_ip_address = default_data[test_name]["rtsp_ip_address"]
     rtsp_port = default_data[test_name]["rtsp_port"]
 
     # Create Pipelines
     webrtc_name = test_name + ".video_sink"
-    webrtc = webrtc_base_pipeline + "signaler::user-channel=" + user_channel
-    webrtc += " signaler::peer-channel=" + peer_channel
+    webrtc = webrtc_base_pipeline + "signaler::session_id=" + session_id
     webrtc += " name=" + test_name
 
     rtsp = rstp_source_pipeline + rtsp_ip_address + ":" + rtsp_port + "/test"

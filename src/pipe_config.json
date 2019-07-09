@@ -1,8 +1,7 @@
 {
 "Test0":
     { 
-      "user-channel":"123",
-      "peer-channel":"850",
+      "session_id":"ridgerun1234",
       "rtsp_ip_address":"localhost",
       "rtsp_port":"5001"
     }
