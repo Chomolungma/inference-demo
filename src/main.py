@@ -28,6 +28,8 @@ interpipesink_pipeline = " interpipesink enable-last-sample=false forward-eos=tr
 interpipesrc_pipeline = " interpipesrc name=src format=3 listen-to="
 video_encode_pipeline = " queue max-size-buffers=1 leaky=downstream ! omxvp8enc ! rtpvp8pay"
 tee_pipeline = " tee name=t"
+jpeg_base_pipeline = "nvjpegenc"
+filesink_base_pipeline = "identity name=identity silent=false ! multifilesink location=output%d.jpeg"
 
 # Inference (Tinyyolov2)
 tinyyolov2_format_pipeline = " capsfilter caps=video/x-raw,width=752,height=480 "
@@ -108,8 +110,11 @@ def build_test_0(gstd_client, test_name, default_data):
 
     video_send = inference + " ! " + video_encode_pipeline
 
+    jpeg = jpeg_base_pipeline + " " + test_name + ".jpeg_sink" + filesink_base_pipeline
+    
+
     full_pipe = webrtc + "  " + camera_source_pipeline + " ! " + video_receive0 + \
-        rtsp + " ! " + video_receive1 + video_send + " ! " + webrtc_name
+        rtsp + " ! " + video_receive1 + video_send + " ! " + webrtc_name + ".t " + jpeg
 
     logging.info(" Test name: " + test_name)
     logging.info(
