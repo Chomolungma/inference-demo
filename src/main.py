@@ -27,16 +27,16 @@ video_decode_pipeline = " rtpvp8depay ! omxvp8dec ! nvvidconv ! capsfilter caps=
 interpipesink_pipeline = " interpipesink enable-last-sample=false forward-eos=true forward-events=true async=false name="
 interpipesrc_pipeline = " interpipesrc name=src format=3 listen-to="
 video_encode_pipeline = " queue max-size-buffers=1 leaky=downstream ! omxvp8enc ! rtpvp8pay"
-tee_pipeline = " tee name=t"
-jpeg_base_pipeline = "nvjpegenc"
-filesink_base_pipeline = "identity name=identity silent=false ! multifilesink location=output%d.jpeg"
+tee_pipeline = " tee name="
+jpeg_base_pipeline = " nvjpegenc name="
+multifilesink_pipeline = " identity name=identity silent=false ! multifilesink location=/tmp/output.jpeg"
 
 # Inference (Tinyyolov2)
 tinyyolov2_format_pipeline = " capsfilter caps=video/x-raw,width=752,height=480 "
 tinyyolov2_base_pipeline = """ tinyyolov2 model-location=""" + models_path + \
     """graph_tinyyolov2_tensorflow.pb backend=tensorflow backend::input-layer=input/Placeholder backend::output-layer=add_8 name=net """
-tinyyolov2_net_pipeline = " t. ! queue max-size-buffers=1 leaky=downstream ! nvvidconv ! capsfilter caps=video/x-raw(memory:NVMM) ! nvvidconv ! net.sink_model "
-tinyyolov2_bypass_pipeline = " t. ! queue max-size-buffers=1 leaky=downstream ! net.sink_bypass "
+tinyyolov2_net_pipeline = " queue max-size-buffers=1 leaky=downstream ! nvvidconv ! capsfilter caps=video/x-raw(memory:NVMM) ! nvvidconv ! net.sink_model "
+tinyyolov2_bypass_pipeline = " queue max-size-buffers=1 leaky=downstream ! net.sink_bypass "
 tinyyolov2_overlay_pipeline = """ net.src_bypass ! nvvidconv ! capsfilter caps=video/x-raw(memory:NVMM) ! nvvidconv ! detectionoverlay labels=\"""" + tinyyolo_labels + \
     """\" ! inferencealert name=person-alert label-index=14 ! queue max-size-buffers=1 leaky=downstream ! nvvidconv ! capsfilter caps=video/x-raw(memory:NVMM)  ! nvvidconv ! capsfilter caps=video/x-raw """
 
@@ -103,18 +103,19 @@ def build_test_0(gstd_client, test_name, default_data):
     video_receive1 += interpipesink_pipeline + interpipesink1_name
 
     inference = tinyyolov2_base_pipeline
-    inference += interpipesrc_pipeline + interpipesink1_name + " ! " + tee_pipeline
-    inference += tinyyolov2_net_pipeline
-    inference += tinyyolov2_bypass_pipeline
+    inference += interpipesrc_pipeline + interpipesink1_name + " ! " + tee_pipeline + "t0"
+    inference += " t0. ! " + tinyyolov2_net_pipeline
+    inference += " t0. ! " + tinyyolov2_bypass_pipeline
     inference += tinyyolov2_overlay_pipeline
 
-    video_send = inference + " ! " + video_encode_pipeline
-
-    jpeg = jpeg_base_pipeline + " " + test_name + ".jpeg_sink" + filesink_base_pipeline
+    video_send = inference + " ! " + tee_pipeline + "t1"
+    video_send += " t1. ! " + video_encode_pipeline
     
+    jpeg = " t1. ! " + jpeg_base_pipeline + test_name + "_jpeg_sink ! "
+    jpeg += multifilesink_pipeline
 
     full_pipe = webrtc + "  " + camera_source_pipeline + " ! " + video_receive0 + \
-        rtsp + " ! " + video_receive1 + video_send + " ! " + webrtc_name + ".t " + jpeg
+        rtsp + " ! " + video_receive1 + video_send + " ! " + webrtc_name + jpeg
 
     logging.info(" Test name: " + test_name)
     logging.info(
