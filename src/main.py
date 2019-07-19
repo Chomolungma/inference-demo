@@ -25,11 +25,11 @@ rstp_source_pipeline = " rtspsrc debug=true async-handling=true location=rtsp://
 camera_source_pipeline = " nvarguscamerasrc sensor-id=0 ! nvvidconv ! capsfilter caps=video/x-raw,width=752,height=480 "
 video_decode_pipeline = " rtpvp8depay ! omxvp8dec ! nvvidconv ! capsfilter caps=video/x-raw(memory:NVMM) ! nvvidconv "
 interpipesink_pipeline = " interpipesink enable-last-sample=false forward-eos=true forward-events=true async=false name="
-interpipesrc_pipeline = " interpipesrc name=src format=3 listen-to="
+interpipesrc_pipeline = " interpipesrc format=3 name="
 video_encode_pipeline = " queue max-size-buffers=1 leaky=downstream ! omxvp8enc ! rtpvp8pay"
 tee_pipeline = " tee name="
 jpeg_base_pipeline = " nvjpegenc name="
-multifilesink_pipeline = " identity name=identity silent=false ! multifilesink location=/tmp/output.jpeg"
+multifilesink_pipeline = " multifilesink location=/tmp/output%d.jpeg"
 
 # Inference (Tinyyolov2)
 tinyyolov2_format_pipeline = " capsfilter caps=video/x-raw,width=752,height=480 "
@@ -95,6 +95,7 @@ def build_test_0(gstd_client, test_name, default_data):
 
     interpipesink0_name = test_name + "_camera"
     interpipesink1_name = test_name + "_decodesink"
+    interpipesink2_name = test_name + "_inferencesink"
 
     video_receive0 = interpipesink_pipeline + interpipesink0_name
 
@@ -103,16 +104,19 @@ def build_test_0(gstd_client, test_name, default_data):
     video_receive1 += interpipesink_pipeline + interpipesink1_name
 
     inference = tinyyolov2_base_pipeline
-    inference += interpipesrc_pipeline + interpipesink1_name + " ! " + tee_pipeline + "t0"
+    inference += interpipesrc_pipeline + "src0" + " listen-to=" + interpipesink1_name
+    inference += " ! " + tee_pipeline + "t0"
     inference += " t0. ! " + tinyyolov2_net_pipeline
     inference += " t0. ! " + tinyyolov2_bypass_pipeline
     inference += tinyyolov2_overlay_pipeline
 
-    video_send = inference + " ! " + tee_pipeline + "t1"
-    video_send += " t1. ! " + video_encode_pipeline
+    video_send = inference + " ! " + interpipesink_pipeline + interpipesink2_name
+    video_send += interpipesrc_pipeline + "src1" + " listen-to=" + interpipesink2_name
+    video_send += " ! " + video_encode_pipeline
     
-    jpeg = " t1. ! " + jpeg_base_pipeline + test_name + "_jpeg_sink ! "
-    jpeg += multifilesink_pipeline
+    jpeg = interpipesrc_pipeline + "src2" + " listen-to= " + " num-buffers=1"
+    jpeg += " ! " + jpeg_base_pipeline + test_name + "_jpeg_sink"
+    jpeg += " ! " + multifilesink_pipeline
 
     full_pipe = webrtc + "  " + camera_source_pipeline + " ! " + video_receive0 + \
         rtsp + " ! " + video_receive1 + video_send + " ! " + webrtc_name + jpeg
@@ -141,14 +145,14 @@ def main(args=None):
     time.sleep(1)
     while True:
         choice = input(
-            "    ** Menu **\n 1) Camera source\n 2) RTSP source\n 3) Exit\n > ")
+            "    ** Menu **\n 1) Camera source\n 2) RTSP source\n 3) Take snapshot\n 4) Exit\n > ")
         choice = choice.lower()  # Convert input to "lowercase"
 
         if choice == '1':
             set_element_prop(
                 gstd_client,
                 "p0",
-                "src",
+                "src0",
                 "listen-to",
                 "Test0_camera")
             print("--> Camera source selected\n")
@@ -156,11 +160,26 @@ def main(args=None):
             set_element_prop(
                 gstd_client,
                 "p0",
-                "src",
+                "src0",
                 "listen-to",
                 "Test0_decodesink")
             print("--> RTSP source selected\n")
         if choice == '3':
+            set_element_prop(
+                gstd_client,
+                "p0",
+                "src2",
+                "listen-to",
+                "Test0_inferencesink")
+            time.sleep(0.6)
+            set_element_prop(
+                gstd_client,
+                "p0",
+                "src2",
+                "listen-to",
+                "")
+            print("--> Snapshot has been taken\n")
+        if choice == '4':
             print("--> Exit\n")
             break
 
