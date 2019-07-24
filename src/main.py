@@ -7,6 +7,7 @@ import gi
 import sys
 import time
 import json
+import threading
 gi.require_version('Gst', '1.0')
 gi.require_version('GObject', '2.0')
 
@@ -25,11 +26,11 @@ rstp_source_pipeline = " rtspsrc debug=true async-handling=true location=rtsp://
 camera_source_pipeline = " nvarguscamerasrc sensor-id=0 ! nvvidconv ! capsfilter caps=video/x-raw,width=752,height=480 "
 video_decode_pipeline = " rtpvp8depay ! omxvp8dec ! nvvidconv ! capsfilter caps=video/x-raw(memory:NVMM) ! nvvidconv "
 interpipesink_pipeline = " interpipesink enable-last-sample=false forward-eos=true forward-events=true async=false name="
-interpipesrc_pipeline = " interpipesrc format=3 name="
+interpipesrc_pipeline = " interpipesrc format=3 enable-sync=false name="
 video_encode_pipeline = " queue max-size-buffers=1 leaky=downstream ! omxvp8enc ! rtpvp8pay"
 tee_pipeline = " tee name="
 jpeg_base_pipeline = " nvjpegenc name="
-multifilesink_pipeline = " multifilesink location=/tmp/output%d.jpeg"
+multifilesink_pipeline = " multifilesink location=/tmp/output%d.jpeg sync=false"
 
 # Inference (Tinyyolov2)
 tinyyolov2_format_pipeline = " capsfilter caps=video/x-raw,width=752,height=480 "
@@ -114,12 +115,8 @@ def build_test_0(gstd_client, test_name, default_data):
     video_send += interpipesrc_pipeline + "src1" + " listen-to=" + interpipesink2_name
     video_send += " ! " + video_encode_pipeline
     
-    jpeg = interpipesrc_pipeline + "src2" + " listen-to= " + " num-buffers=1"
-    jpeg += " ! " + jpeg_base_pipeline + test_name + "_jpeg_sink"
-    jpeg += " ! " + multifilesink_pipeline
-
     full_pipe = webrtc + "  " + camera_source_pipeline + " ! " + video_receive0 + \
-        rtsp + " ! " + video_receive1 + video_send + " ! " + webrtc_name + jpeg
+        rtsp + " ! " + video_receive1 + video_send + " ! " + webrtc_name
 
     logging.info(" Test name: " + test_name)
     logging.info(
@@ -127,6 +124,13 @@ def build_test_0(gstd_client, test_name, default_data):
     logging.info(" Pipeline: " + full_pipe)
     create_pipeline(gstd_client, "p0", full_pipe)
     play_pipeline(gstd_client, "p0")
+
+    jpeg_pipe = interpipesrc_pipeline + "src2" + " listen-to=" + interpipesink2_name \
+        + " num-buffers=1"
+    jpeg_pipe += " ! " + jpeg_base_pipeline + test_name + "_jpeg_sink"
+    jpeg_pipe += " ! " + multifilesink_pipeline
+
+    create_pipeline(gstd_client, "p1", jpeg_pipe)
 
 
 def main(args=None):
@@ -142,7 +146,11 @@ def main(args=None):
     logging.info("This is a demo application...")
     build_test_0(gstd_client, "Test0", default_params)
 
-    time.sleep(1)
+    time.sleep(10)
+
+    # Bus Filter definition
+    gstd_client.bus_filter ("p1", "eos")
+
     while True:
         choice = input(
             "    ** Menu **\n 1) Camera source\n 2) RTSP source\n 3) Take snapshot\n 4) Exit\n > ")
@@ -165,24 +173,13 @@ def main(args=None):
                 "Test0_decodesink")
             print("--> RTSP source selected\n")
         if choice == '3':
-            set_element_prop(
-                gstd_client,
-                "p0",
-                "src2",
-                "listen-to",
-                "Test0_inferencesink")
-            time.sleep(0.6)
-            set_element_prop(
-                gstd_client,
-                "p0",
-                "src2",
-                "listen-to",
-                "")
+            play_pipeline(gstd_client, "p1")
+            gstd_client.bus_read ("p1")
+            stop_pipeline(gstd_client, "p1")
             print("--> Snapshot has been taken\n")
         if choice == '4':
             print("--> Exit\n")
             break
-
     stop_pipeline(gstd_client, "p0")
 
 
