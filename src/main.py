@@ -1,15 +1,17 @@
 #!/usr/bin/env python3
 
 from gst import gstc
-from gi.repository import GObject, Gst, GLib
 import logging
 import gi
 import sys
 import time
 import json
+import subprocess
 import threading
-gi.require_version('Gst', '1.0')
-gi.require_version('GObject', '2.0')
+
+# Setup
+GSTD_PROCNAME = 'gstd'
+logfile_name =  "gst-inference-demo.log"
 
 # Read Tinyyolo Labels
 tinyyolo_labels_file = open("tinyyolov2_labels.txt", "r")
@@ -41,16 +43,47 @@ tinyyolov2_bypass_pipeline = " queue max-size-buffers=1 leaky=downstream ! net.s
 tinyyolov2_overlay_pipeline = """ net.src_bypass ! nvvidconv ! capsfilter caps=video/x-raw(memory:NVMM) ! nvvidconv ! detectionoverlay labels=\"""" + tinyyolo_labels + \
     """\" ! inferencealert name=person-alert label-index=14 ! queue max-size-buffers=1 leaky=downstream ! nvvidconv ! capsfilter caps=video/x-raw(memory:NVMM)  ! nvvidconv ! capsfilter caps=video/x-raw """
 
+def start_gstd(arg1="", arg2=""):
+    try:
+        gstd_bin = subprocess.check_output(['which',GSTD_PROCNAME])
+        gstd_bin = gstd_bin.rstrip()
+        logging.info('Startting GStreamer Daemon...')
+        subprocess.Popen([gstd_bin, arg1, arg2])
+        time.sleep(3)
+    except subprocess.CalledProcessError:
+        # Did not find gstd
+        logging.error("GStreamer Daemon is not running and it is not installed.")
+        logging.error("To get GStreamer Daemon, visit https://www.ridgerun.com/gstd.")
+        return False
+
 
 def logger_setup():
+    gstd_log = logging.getLogger('GSTD')
+    gstd_log.setLevel(logging.ERROR)
+    handler = logging.StreamHandler(logfile_name)
+    handler.setLevel(logging.DEBUG)
+    formatter = logging.Formatter(
+        '%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    handler.setFormatter(formatter)
+    gstd_log.addHandler(handler)
+
     root = logging.getLogger()
-    root.setLevel(logging.DEBUG)
-    handler = logging.StreamHandler(sys.stdout)
+    root.setLevel(logging.INFO)
+    handler = logging.FileHandler(logfile_name)
     handler.setLevel(logging.DEBUG)
     formatter = logging.Formatter(
         '%(asctime)s - %(name)s - %(levelname)s - %(message)s')
     handler.setFormatter(formatter)
     root.addHandler(handler)
+
+
+def person_alert_handler (name, gstd_client):
+    while 1:
+        ret = gstd_client.signal_connect("p0", "person-alert", "alert")
+        if (ret["code"] == 0):
+            logging.info ("Person Detected")
+        else:
+            break
 
 
 def build_test_0(gstd_client, test_name, default_data):
@@ -92,7 +125,7 @@ def build_test_0(gstd_client, test_name, default_data):
     logging.info(" Test name: " + test_name)
     logging.info(
         " Description: RTSP + GstInterpipe + GstInference Detection + GstWebRTC on GStreamer Daemon")
-    logging.info(" Pipeline: " + full_pipe)
+    logging.debug(" Pipeline: " + full_pipe)
     gstd_client.pipeline_create("p0", full_pipe)
     gstd_client.pipeline_play("p0")
 
@@ -105,7 +138,10 @@ def build_test_0(gstd_client, test_name, default_data):
 
 
 def main(args=None):
+    start_gstd("-n", "2")
+
     gstd_client = gstc.client(loglevel='ERROR')
+    gstd_client2 = gstc.client(port=5001,loglevel='ERROR')
 
     # Load the JSON default parameters as a dictionary
     with open('./pipe_config.json') as json_file:
@@ -118,6 +154,11 @@ def main(args=None):
     build_test_0(gstd_client, "Test0", default_params)
 
     time.sleep(10)
+
+    # Person Alert Thread
+    x = threading.Thread(target=person_alert_handler, args=(1,gstd_client2))
+    x.daemon = True
+    x.start()
 
     # Bus Filter definition
     gstd_client.bus_filter ("p1", "eos")
