@@ -77,11 +77,17 @@ def logger_setup():
     root.addHandler(handler)
 
 
+def take_snapshot (gstd_client):
+    gstd_client.pipeline_play("p1")
+    gstd_client.bus_read ("p1")
+    gstd_client.pipeline_stop("p1")
+
 def person_alert_handler (name, gstd_client):
     while 1:
         ret = gstd_client.signal_connect("p0", "person-alert", "alert")
         if (ret["code"] == 0):
             logging.info ("Person Detected")
+            take_snapshot (gstd_client)
         else:
             break
 
@@ -183,9 +189,7 @@ def main(args=None):
                 "Test0_decodesink")
             print("--> RTSP source selected\n")
         if choice == '3':
-            gstd_client.pipeline_play("p1")
-            gstd_client.bus_read ("p1")
-            gstd_client.pipeline_stop("p1")
+            take_snapshot (gstd_client)
             print("--> Snapshot has been taken\n")
         if choice == '4':
             print("--> Exit\n")
