@@ -53,35 +53,6 @@ def logger_setup():
     root.addHandler(handler)
 
 
-def create_pipeline(gstd_client, name, pipeline):
-    global pipeline_counter
-    ret = gstd_client.pipeline_create(name, pipeline)
-    if (ret != 0):
-        print("Error creating the pipeline: " + str(ret))
-        return
-
-
-def play_pipeline(gstd_client, name):
-    ret = gstd_client.pipeline_play(name)
-    if (ret != 0):
-        print("Error playing the pipeline: " + str(ret))
-        return
-
-
-def set_element_prop(gstd_client, name, element, prop, value):
-    ret = gstd_client.element_set(name, element, prop, value)
-    if (ret != 0):
-        print("Error setting element property: " + str(ret))
-        return
-
-
-def stop_pipeline(gstd_client, name):
-    ret = gstd_client.pipeline_stop(name)
-    if (ret != 0):
-        print("Error stopping the pipeline: " + str(ret))
-        return
-
-
 def build_test_0(gstd_client, test_name, default_data):
     session_id = default_data[test_name]["session_id"]
     rtsp_ip_address = default_data[test_name]["rtsp_ip_address"]
@@ -122,19 +93,19 @@ def build_test_0(gstd_client, test_name, default_data):
     logging.info(
         " Description: RTSP + GstInterpipe + GstInference Detection + GstWebRTC on GStreamer Daemon")
     logging.info(" Pipeline: " + full_pipe)
-    create_pipeline(gstd_client, "p0", full_pipe)
-    play_pipeline(gstd_client, "p0")
+    gstd_client.pipeline_create("p0", full_pipe)
+    gstd_client.pipeline_play("p0")
 
     jpeg_pipe = interpipesrc_pipeline + "src2" + " listen-to=" + interpipesink2_name \
         + " num-buffers=1"
     jpeg_pipe += " ! " + jpeg_base_pipeline + test_name + "_jpeg_sink"
     jpeg_pipe += " ! " + multifilesink_pipeline
 
-    create_pipeline(gstd_client, "p1", jpeg_pipe)
+    gstd_client.pipeline_create("p1", jpeg_pipe)
 
 
 def main(args=None):
-    gstd_client = gstc.client(loglevel='DEBUG')
+    gstd_client = gstc.client(loglevel='ERROR')
 
     # Load the JSON default parameters as a dictionary
     with open('./pipe_config.json') as json_file:
@@ -157,30 +128,28 @@ def main(args=None):
         choice = choice.lower()  # Convert input to "lowercase"
 
         if choice == '1':
-            set_element_prop(
-                gstd_client,
+            gstd_client.element_set(
                 "p0",
                 "src0",
                 "listen-to",
                 "Test0_camera")
             print("--> Camera source selected\n")
         if choice == '2':
-            set_element_prop(
-                gstd_client,
+            gstd_client.element_set(
                 "p0",
                 "src0",
                 "listen-to",
                 "Test0_decodesink")
             print("--> RTSP source selected\n")
         if choice == '3':
-            play_pipeline(gstd_client, "p1")
+            gstd_client.pipeline_play("p1")
             gstd_client.bus_read ("p1")
-            stop_pipeline(gstd_client, "p1")
+            gstd_client.pipeline_stop("p1")
             print("--> Snapshot has been taken\n")
         if choice == '4':
             print("--> Exit\n")
             break
-    stop_pipeline(gstd_client, "p0")
+    gstd_client.pipeline_stop("p0")
 
 
 if __name__ == "__main__":
