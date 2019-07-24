@@ -76,9 +76,11 @@ class client(object):
 
     def __del__(self):
         self.logger.info('Destroying GSTD instance with ip=%s port=%d', self.ip, self.port)
-        for pipe in self.pipes:
-            self.logger.info('Deleting pipelines...')
-            self.pipeline_delete(pipe)
+        self.logger.info('Deleting pipelines...')
+        while (self.pipes != []):
+            ret = self.pipeline_delete(self.pipes[0])
+            if (ret != 0):
+                self.pipes.pop(0)
         if (self.gstd_started):
             self.logger.info('Killing GStreamer Daemon process...')
             self.proc.kill()
@@ -139,7 +141,7 @@ class client(object):
         try:
             jresult = self.socket_send(cmd_line)
             result = json.loads(jresult)
-            if (result['code'] == 0):
+            if (result['code'] == 0 and uri == "pipelines"):
                 self.pipes.append(property)
             else:
                 self.logger.error('Uri create error: %s', result['description'])
@@ -161,16 +163,51 @@ class client(object):
             traceback.print_exc()
             return None
 
+    def update(self, uri, value):
+        self.logger.info('Updating uri %s with value "%s"', uri, value)
+        cmd_line = ['update', uri, value]
+        try:
+            jresult = self.socket_send(cmd_line)
+            result = json.loads(jresult)
+            if (result['code'] != 0):
+                self.logger.error('Uri update error: %s', result['description'])
+            return result['code']
+        except Exception:
+            self.logger.error('URI update error')
+            traceback.print_exc()
+            return None
+
+    def delete(self, uri, name):
+        self.logger.info('Deleting name %s at uri "%s"', name, uri)
+        cmd_line = ['delete', uri, name]
+        try:
+            jresult = self.socket_send(cmd_line)
+            result = json.loads(jresult)
+            if (result['code'] == 0 and uri == "pipelines"):
+                self.pipes.remove(name)
+            else:
+                self.logger.error('Uri delete error: %s', result['description'])
+            return result['code']
+        except Exception:
+            self.logger.error('URI delete error')
+            traceback.print_exc()
+            return None
+
     def pipeline_create(self, pipe_name,  pipe_desc):
         self.logger.info('Creating pipeline %s with description "%s"', pipe_name, pipe_desc)
         cmd_line = ['pipeline_create', pipe_name, pipe_desc]
-        jresult = self.socket_send(cmd_line)
-        result = json.loads(jresult)
-        if (result['code'] == 0):
-            self.pipes.append(pipe_name)
-        else:
-            self.logger.error('Pipeline create error: %s', result['description'])
-        return result['code']
+        try:
+            jresult = self.socket_send(cmd_line)
+            result = json.loads(jresult)
+            if (result['code'] == 0):
+                self.pipes.append(pipe_name)
+            else:
+                self.logger.error('Pipeline create error: %s', result['description'])
+            return result['code']
+        except Exception:
+            self.logger.error('Pipeline create error')
+            traceback.print_exc()
+            return None
 
     def pipeline_delete(self, pipe_name):
         self.logger.info('Deleting pipeline %s', pipe_name)
@@ -178,11 +215,13 @@ class client(object):
         try:
             jresult = self.socket_send(cmd_line)
             result = json.loads(jresult)
-            if (result['code'] != 0):
-                self.logger.error('Pipeline create error: %s', result['description'])
+            if (result['code'] == 0):
+                self.pipes.remove(pipe_name)
+            else:
+                self.logger.error('Pipeline delete error: %s', result['description'])
             return result['code']
         except Exception:
-            self.logger.error('Pipeline create error')
+            self.logger.error('Pipeline delete error')
             traceback.print_exc()
             return None
 
@@ -260,3 +299,242 @@ class client(object):
         if value==None:
             self.logger.error("invalid value received")
         return value
+
+    def list_pipelines(self):
+        self.logger.info('Listing pipelines')
+        cmd_line = ['list_pipelines']
+        try:
+            jresult = self.socket_send(cmd_line)
+            result = json.loads(jresult)
+            if (result['code'] != 0):
+                self.logger.error('Pipelines list error: %s', result['description'])
+            return result['nodes']
+        except Exception:
+            self.logger.error('Pipelines list error')
+            traceback.print_exc()
+            return None
+
+    def list_elements(self, pipe):
+        self.logger.info('Listing elements of pipeline %s', pipe)
+        cmd_line = ['list_elements', pipe]
+        try:
+            jresult = self.socket_send(cmd_line)
+            result = json.loads(jresult)
+            if (result['code'] != 0):
+                self.logger.error('Elements list error: %s', result['description'])
+            return result['nodes']
+        except Exception:
+            self.logger.error('Elements list error')
+            traceback.print_exc()
+            return None
+
+    def list_properties(self, pipe, element):
+        self.logger.info('Listing properties of  element %s from pipeline %s', element, pipeline)
+        cmd_line = ['list_properties', pipe, element]
+        try:
+            jresult = self.socket_send(cmd_line)
+            result = json.loads(jresult)
+            if (result['code'] != 0):
+                self.logger.error('Properties list error: %s', result['description'])
+            return result['nodes']
+        except Exception:
+            self.logger.error('Properties list error')
+            traceback.print_exc()
+            return None
+
+    def list_signals(self, pipe, element):
+        self.logger.info('Listing signals of  element %s from pipeline %s', element, pipeline)
+        cmd_line = ['list_signals', pipe, element]
+        try:
+            jresult = self.socket_send(cmd_line)
+            result = json.loads(jresult)
+            if (result['code'] != 0):
+                self.logger.error('Signals list error: %s', result['description'])
+            return result['nodes']
+        except Exception:
+            self.logger.error('Signals list error')
+            traceback.print_exc()
+            return None
+
+    def bus_read(self, pipe):
+        self.logger.info('Reading bus of pipeline %s', pipe)
+        cmd_line = ['bus_read', pipe]
+        try:
+            jresult = self.socket_send(cmd_line)
+            result = json.loads(jresult)
+        except Exception:
+            self.logger.error('Bus read error')
+            traceback.print_exc()
+            return None
+
+    def bus_filter(self, pipe, filter):
+        self.logger.info('Reading bus of pipeline %s with filter %s', pipe, filter)
+        cmd_line = ['bus_filter', pipe, filter]
+        try:
+            jresult = self.socket_send(cmd_line)
+            result = json.loads(jresult)
+            return result
+        except Exception:
+            self.logger.error('Bus read error')
+            traceback.print_exc()
+            return None
+
+    def bus_timeout(self, pipe, timeout):
+        self.logger.info('Reading bus of pipeline %s with timeout %s', pipe, timeout)
+        cmd_line = ['bus_timeout', pipe, timeout]
+        try:
+            jresult = self.socket_send(cmd_line)
+            result = json.loads(jresult)
+            return result
+        except Exception:
+            self.logger.error('Timeout set error')
+            traceback.print_exc()
+            return None
+
+    def event_eos(self, pipe):
+        self.logger.info('Sending end-of-stream event to pipeline %s', pipe)
+        cmd_line = ['event_eos', pipe]
+        try:
+            jresult = self.socket_send(cmd_line)
+            result = json.loads(jresult)
+            if (result['code'] != 0):
+                self.logger.error('End-of-stream event error: %s', result['description'])
+            return result['code']
+        except Exception:
+            self.logger.error('End-of-stream event error')
+            traceback.print_exc()
+            return None
+
+    def event_seek (self, pipe, rate=1.0, format=3, flags=1, start_type=1, start=0, end_type=1, end=-1):
+        self.logger.info('Performing event seek in pipeline %s', pipe)
+        cmd_line = ['event_seek', pipe, rate, format, flags, start_type, start, end_type, end]
+        try:
+            jresult = self.socket_send(cmd_line)
+            result = json.loads(jresult)
+            if (result['code'] != 0):
+                self.logger.error('Event seek error: %s', result['description'])
+            return result['code']
+        except Exception:
+            self.logger.error('Event seek error')
+            traceback.print_exc()
+            return None
+
+    def event_flush_start(self, pipe):
+        self.logger.info('Putting pipeline %s in flushing mode', pipe)
+        cmd_line = ['event_flush_start', pipe]
+        try:
+            jresult = self.socket_send(cmd_line)
+            result = json.loads(jresult)
+            if (result['code'] != 0):
+                self.logger.error('Event flush start error: %s', result['description'])
+            return result['code']
+        except Exception:
+            self.logger.error('Event flush start error')
+            traceback.print_exc()
+            return None
+
+    def event_flush_stop(self, pipe, reset=True):
+        self.logger.info('Taking pipeline %s out of flushing mode', pipe)
+        cmd_line = ['event_flush_stop', pipe]
+        try:
+            jresult = self.socket_send(cmd_line)
+            result = json.loads(jresult)
+            if (result['code'] != 0):
+                self.logger.error('Event flush stop error: %s', result['description'])
+            return result['code']
+        except Exception:
+            self.logger.error('Event flush stop error')
+            traceback.print_exc()
+            return None
+
+    def signal_connect(self, pipe, element, signal):
+        self.logger.info('Connecting to signal %s of element %s from pipeline %s', signal, element, pipe)
+        cmd_line = ['signal_connect', pipe, element, signal]
+        try:
+            jresult = self.socket_send(cmd_line)
+            result = json.loads(jresult)
+            return result
+        except Exception:
+            self.logger.error('Signal connect error')
+            traceback.print_exc()
+            return None
+
+    def signal_timeout(self, pipe, element, signal, timeout):
+        self.logger.info('Connecting to signal %s of element %s from pipeline %s with timeout %s', signal, element, pipe, timeout)
+        cmd_line = ['signal_timeout', pipe, element, signal, timeout]
+        try:
+            jresult = self.socket_send(cmd_line)
+            result = json.loads(jresult)
+            return result
+        except Exception:
+            self.logger.error('Signal connect error')
+            traceback.print_exc()
+            return None
+
+    def signal_disconnect(self, pipe, element, signal):
+        self.logger.info('Disonnecting from signal %s of element %s from pipeline %s', signal, element, pipe)
+        cmd_line = ['signal_disconnect', pipe, element, signal]
+        try:
+            jresult = self.socket_send(cmd_line)
+            result = json.loads(jresult)
+            return result
+        except Exception:
+            self.logger.error('Signal disconnect error')
+            traceback.print_exc()
+            return None
+
+    def debug_enable(self, enable):
+        self.logger.info('Enabling/Disabling GStreamer debug')
+        cmd_line = ['debug_enable', enable]
+        try:
+            jresult = self.socket_send(cmd_line)
+            result = json.loads(jresult)
+            if (result['code'] != 0):
+                self.logger.error('Debug enable error: %s', result['description'])
+            return result['code']
+        except Exception:
+            self.logger.error('Debug enable error')
+            traceback.print_exc()
+            return None
+
+    def debug_threshold(self, threshold):
+        self.logger.info('Setting GStreamer debug threshold to %s', threshold)
+        cmd_line = ['debug_threshold', threshold]
+        try:
+            jresult = self.socket_send(cmd_line)
+            result = json.loads(jresult)
+            if (result['code'] != 0):
+                self.logger.error('Debug threshold error: %s', result['description'])
+            return result['code']
+        except Exception:
+            self.logger.error('Debug threshold error')
+            traceback.print_exc()
+            return None
+
+    def debug_color(self, colors):
+        self.logger.info('Enabling/Disabling GStreamer debug colors')
+        cmd_line = ['debug_color', color]
+        try:
+            jresult = self.socket_send(cmd_line)
+            result = json.loads(jresult)
+            if (result['code'] != 0):
+                self.logger.error('Debug colors error: %s', result['description'])
+            return result['code']
+        except Exception:
+            self.logger.error('Debug color error')
+            traceback.print_exc()
+            return None
+
+    def debug_reset(self, reset):
+        self.logger.info('Enabling/Disabling GStreamer debug threshold reset')
+        cmd_line = ['debug_reset', reset]
+        try:
+            jresult = self.socket_send(cmd_line)
+            result = json.loads(jresult)
+            if (result['code'] != 0):
+                self.logger.error('Debug reset error: %s', result['description'])
+            return result['code']
+        except Exception:
+            self.logger.error('Debug reset error')
+            traceback.print_exc()
+            return None
