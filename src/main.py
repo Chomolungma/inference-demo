@@ -43,6 +43,7 @@ tinyyolov2_bypass_pipeline = " queue max-size-buffers=1 leaky=downstream ! net.s
 tinyyolov2_overlay_pipeline = """ net.src_bypass ! nvvidconv ! capsfilter caps=video/x-raw(memory:NVMM) ! nvvidconv ! detectionoverlay labels=\"""" + tinyyolo_labels + \
     """\" ! inferencealert name=person-alert label-index=14 ! queue max-size-buffers=1 leaky=downstream ! nvvidconv ! capsfilter caps=video/x-raw(memory:NVMM)  ! nvvidconv ! capsfilter caps=video/x-raw """
 
+
 def gstd(arg1="", arg2=""):
     try:
         gstd_bin = subprocess.check_output(['which',GSTD_PROCNAME])
@@ -55,23 +56,10 @@ def gstd(arg1="", arg2=""):
 
 
 def logger_setup():
-    gstd_log = logging.getLogger('GSTD')
-    gstd_log.setLevel(logging.ERROR)
-    handler = logging.StreamHandler(logfile_name)
-    handler.setLevel(logging.DEBUG)
-    formatter = logging.Formatter(
-        '%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-    handler.setFormatter(formatter)
-    gstd_log.addHandler(handler)
-
-    root = logging.getLogger()
-    root.setLevel(logging.INFO)
-    handler = logging.FileHandler(logfile_name)
-    handler.setLevel(logging.DEBUG)
-    formatter = logging.Formatter(
-        '%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-    handler.setFormatter(formatter)
-    root.addHandler(handler)
+    logging.basicConfig(filename=logfile_name,
+                        format='%(asctime)s,%(msecs)d %(name)s %(levelname)s %(message)s',
+                        datefmt='%H:%M:%S',
+                        level=logging.DEBUG)
 
 
 def take_snapshot (gstd_client):
@@ -79,21 +67,24 @@ def take_snapshot (gstd_client):
     gstd_client.bus_read ("p1")
     gstd_client.pipeline_stop("p1")
 
+
 def person_alert_handler (name, gstd_client):
     while 1:
         ret = gstd_client.signal_connect("p0", "person-alert", "alert")
         if (ret["response"] == None):
             logging.info (" Closing GStreamer Daemon...")
             gstd ("-k")
+            time.sleep(2)
             break
         if (ret["code"] == 0):
             logging.info ("Person Detected")
             take_snapshot (gstd_client)
+            print ("--> Person detected, snapshot has been taken")
         else:
             break
 
 
-def build_test_0(gstd_client, test_name, default_data):
+def build_test(gstd_client, test_name, default_data):
     session_id = default_data[test_name]["session_id"]
     rtsp_ip_address = default_data[test_name]["rtsp_ip_address"]
     rtsp_port = default_data[test_name]["rtsp_port"]
@@ -134,7 +125,6 @@ def build_test_0(gstd_client, test_name, default_data):
         " Description: RTSP + GstInterpipe + GstInference Detection + GstWebRTC on GStreamer Daemon")
     logging.debug(" Pipeline: " + full_pipe)
     gstd_client.pipeline_create("p0", full_pipe)
-    gstd_client.pipeline_play("p0")
 
     jpeg_pipe = interpipesrc_pipeline + "src2" + " listen-to=" + interpipesink2_name \
         + " num-buffers=1"
@@ -144,35 +134,14 @@ def build_test_0(gstd_client, test_name, default_data):
     gstd_client.pipeline_create("p1", jpeg_pipe)
 
 
-def main(args=None):
-    gstd("-n", "2")
-
-    gstd_client = gstc.client(loglevel='ERROR')
-    gstd_client2 = gstc.client(port=5001,loglevel='ERROR')
-
-    # Load the JSON default parameters as a dictionary
-    with open('./pipe_config.json') as json_file:
-        default_params = json.load(json_file)
-
-    # Logger Setup
-    logger_setup()
-
-    logging.info("This is a demo application...")
-    build_test_0(gstd_client, "Test0", default_params)
-
-    time.sleep(10)
-
-    # Person Alert Thread
-    x = threading.Thread(target=person_alert_handler, args=(1,gstd_client2))
-    x.daemon = True
-    x.start()
+def app_menu (gstd_client):
 
     # Bus Filter definition
     gstd_client.bus_filter ("p1", "eos")
 
     while True:
         choice = input(
-            "    ** Menu **\n 1) Camera source\n 2) RTSP source\n 3) Take snapshot\n 4) Exit\n > ")
+                "\n    ** Menu **\n 1) Camera source\n 2) RTSP source\n 3) Take snapshot\n 4) Exit\n > ")
         choice = choice.lower()  # Convert input to "lowercase"
 
         if choice == '1':
@@ -193,9 +162,45 @@ def main(args=None):
             take_snapshot (gstd_client)
             print("--> Snapshot has been taken\n")
         if choice == '4':
+            gstd_client.pipeline_stop("p0")
             print("--> Exit\n")
             break
-    gstd_client.pipeline_stop("p0")
+
+
+def main(args=None):
+    print ("\n Starting GstInference Application...")
+
+    # Logger Setup
+    logger_setup()
+
+    # Start GSTD
+    logging.info(" Startin GStreamer Daemon... ")
+    gstd("-n", "2")
+
+    gstd_client = gstc.client()
+    gstd_client2 = gstc.client(port=5001)
+
+    # Load the JSON default parameters as a dictionary
+    with open('./pipe_config.json') as json_file:
+        default_params = json.load(json_file)
+
+    # Build pipelines
+    build_test(gstd_client, "Test0", default_params)
+
+    # Play pipeline P0
+    gstd_client.pipeline_play("p0")
+    time.sleep (15)
+
+    # Person Alert Thread
+    x = threading.Thread(target=person_alert_handler, args=(1,gstd_client2))
+    x.daemon = True
+    x.start()
+
+    # Run Menu
+    try:
+        app_menu (gstd_client)
+    except:
+        gstd_client.pipeline_stop("p0")
 
 
 if __name__ == "__main__":
