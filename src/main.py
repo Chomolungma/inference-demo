@@ -43,17 +43,14 @@ tinyyolov2_bypass_pipeline = " queue max-size-buffers=1 leaky=downstream ! net.s
 tinyyolov2_overlay_pipeline = """ net.src_bypass ! nvvidconv ! capsfilter caps=video/x-raw(memory:NVMM) ! nvvidconv ! detectionoverlay labels=\"""" + tinyyolo_labels + \
     """\" ! inferencealert name=person-alert label-index=14 ! queue max-size-buffers=1 leaky=downstream ! nvvidconv ! capsfilter caps=video/x-raw(memory:NVMM)  ! nvvidconv ! capsfilter caps=video/x-raw """
 
-def start_gstd(arg1="", arg2=""):
+def gstd(arg1="", arg2=""):
     try:
         gstd_bin = subprocess.check_output(['which',GSTD_PROCNAME])
         gstd_bin = gstd_bin.rstrip()
-        logging.info('Startting GStreamer Daemon...')
         subprocess.Popen([gstd_bin, arg1, arg2])
         time.sleep(3)
     except subprocess.CalledProcessError:
-        # Did not find gstd
-        logging.error("GStreamer Daemon is not running and it is not installed.")
-        logging.error("To get GStreamer Daemon, visit https://www.ridgerun.com/gstd.")
+        logging.error("GStreamer Daemon running error.")
         return False
 
 
@@ -85,6 +82,10 @@ def take_snapshot (gstd_client):
 def person_alert_handler (name, gstd_client):
     while 1:
         ret = gstd_client.signal_connect("p0", "person-alert", "alert")
+        if (ret["response"] == None):
+            logging.info (" Closing GStreamer Daemon...")
+            gstd ("-k")
+            break
         if (ret["code"] == 0):
             logging.info ("Person Detected")
             take_snapshot (gstd_client)
@@ -144,7 +145,7 @@ def build_test_0(gstd_client, test_name, default_data):
 
 
 def main(args=None):
-    start_gstd("-n", "2")
+    gstd("-n", "2")
 
     gstd_client = gstc.client(loglevel='ERROR')
     gstd_client2 = gstc.client(port=5001,loglevel='ERROR')
