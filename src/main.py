@@ -8,6 +8,7 @@ import time
 import json
 import subprocess
 import threading
+import os
 
 # Setup
 GSTD_PROCNAME = 'gstd'
@@ -19,7 +20,7 @@ tinyyolo_labels = tinyyolo_labels_file.read()
 tinyyolo_labels_file.close()
 
 # Absolute Path where models are found
-models_path = "/home/nvidia/gst-inference-demo/src/"
+models_path = os.path.dirname(os.path.realpath(__file__)) + "/"
 
 # Pipelines definitions
 
